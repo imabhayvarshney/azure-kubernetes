@@ -1,0 +1,106 @@
+# Creating ConfigMap  
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-config-map
+data:
+  NAME: Abhay_Varshney
+
+---
+# Creating Redis Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      nodeSelector:
+        app: redis
+      containers:
+      - name: redis-container
+        image: redis:latest
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "100Mi"
+        ports:
+        - containerPort: 6379
+
+
+---
+# Creating K8s service CRD for Redis to correctly resolved by Greetings app
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+spec:
+  selector:
+    app: redis
+  ports:
+    - protocol: TCP
+      port: 6379
+      targetPort: 6379
+
+---
+
+## Creating Greetings-App Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: greetings-app
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: greetings-app
+  template:
+    metadata:
+      labels:
+        app: greetings-app
+    spec:
+      nodeSelector:
+        app: greetings-app
+      imagePullSecrets:
+        - name: acr-secret
+      containers:
+      - name: greetings-app
+        image: k8taskregistry.azurecr.io/my-python-app:v1
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5000
+        env:
+        - name: REDIS_HOST
+          value: "redis"  
+        - name: REDIS_PORT
+          value: "6379"  
+        - name: NAME
+          valueFrom:
+            configMapKeyRef:
+              name: my-config-map
+              key: NAME
+
+---
+# Creating K8s service as loadbalancer type for Greetings App 
+apiVersion: v1
+kind: Service
+metadata:
+  name: azure-app-front
+spec:
+  type: LoadBalancer
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+  selector:
+    app: greetings-app
+
+
+#Give frontend pool label as greetings-app and backend as redis 
